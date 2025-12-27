@@ -90,7 +90,7 @@ menu = st.sidebar.selectbox(
 )
 
 # ===============================
-# TAB 1 : 인원수 변화
+# TAB 1 : 인원수 변화 (개선 버전)
 # ===============================
 if menu == "인원수 변화":
     with st.spinner("📊 인원수 데이터를 분석 중입니다..."):
@@ -98,29 +98,44 @@ if menu == "인원수 변화":
 
     if df is not None:
         df["날짜"] = pd.to_datetime(df["날짜"])
+        df = df.sort_values("날짜")
 
-        start_date = pd.to_datetime("2025-08-27")
-        end_date = pd.to_datetime("2025-12-24")
+        START_DATE = pd.to_datetime("2025-08-27")
+        END_DATE = pd.to_datetime("2025-12-24")
+        DAILY_INCREASE = 6.51  # 🔥 핵심
 
-        full_range = pd.date_range(start_date, end_date, freq="D")
-        df_full = pd.DataFrame({"날짜": full_range})
+        # 전체 날짜 생성
+        full_dates = pd.date_range(START_DATE, END_DATE, freq="D")
+        df_full = pd.DataFrame({"날짜": full_dates})
+
+        # 기존 데이터 병합
         df_full = df_full.merge(df, on="날짜", how="left")
 
-        # 11월 1일 이전 평균값으로 예측
-        avg_before_nov = (
-            df_full[df_full["날짜"] < "2025-11-01"]["인원수(명)"]
-            .mean()
-        )
-        df_full["인원수(명)"] = df_full["인원수(명)"].fillna(avg_before_nov)
+        # 최초 기준 인원 (오픈일)
+        first_known = df.iloc[0]
+        base_date = first_known["날짜"]
+        base_value = first_known["인원수(명)"]
 
+        # 인원수 추정 함수
+        def estimate_member(row):
+            if not pd.isna(row["인원수(명)"]):
+                return row["인원수(명)"]
+
+            days_passed = (row["날짜"] - base_date).days
+            return round(base_value + days_passed * DAILY_INCREASE, 1)
+
+        df_full["인원수(명)"] = df_full.apply(estimate_member, axis=1)
+
+        # 변화량 계산
         df_full["일일변화"] = df_full["인원수(명)"].diff()
         avg_change = df_full["일일변화"].mean()
 
+        # 그래프
         fig = px.line(
             df_full,
             x="날짜",
             y="인원수(명)",
-            title="📈 서버 인원수 변화"
+            title="📈 서버 인원수 변화 (일일 평균 +6.51명 반영)"
         )
         fig.update_layout(
             font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
@@ -128,10 +143,23 @@ if menu == "인원수 변화":
         st.plotly_chart(fig, use_container_width=True)
 
         st.metric(
-            label="평균 일일 인원 변화",
+            label="평균 일일 인원 증가",
             value=f"{avg_change:.2f} 명",
-            delta="상승" if avg_change > 0 else "하락"
+            delta="상승 📈"
         )
+
+        # 다운로드
+        buffer = io.BytesIO()
+        df_full.to_excel(buffer, index=False, engine="openpyxl")
+        buffer.seek(0)
+
+        st.download_button(
+            label="📥 인원수 추정 데이터 다운로드",
+            data=buffer.getvalue(),
+            file_name="별빛카페_인원수_일별_추정.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
 
         # ===============================
         # XLSX 다운로드 (TypeError 방지)
