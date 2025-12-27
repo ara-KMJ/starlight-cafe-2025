@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import unicodedata
-import io
 import plotly.express as px
 
 # ===============================
@@ -14,20 +13,41 @@ st.set_page_config(
 )
 
 # ===============================
-# 폰트 (가독성 중심)
+# 글로벌 스타일 (그라데이션)
 # ===============================
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap');
-html, body, [class*="css"] {
-    font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+
+html, body, [data-testid="stAppViewContainer"] {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: linear-gradient(135deg, #000000 0%, #27377c 100%);
+    color: #f9fafb;
 }
+
+[data-testid="stHeader"] {
+    background: transparent;
+}
+
 .soft-card {
-    background:#f9fafb;
-    padding:1.2em;
-    border-radius:14px;
-    border:1px solid #e5e7eb;
-    margin-bottom:1em;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 16px;
+    padding: 1.2em;
+    margin-bottom: 1em;
+    color: #f1f5f9;
+}
+
+h1, h2, h3, h4 {
+    color: #ffffff;
+}
+
+.stDataFrame {
+    background-color: rgba(15, 23, 42, 0.85);
+}
+
+label, p, span {
+    color: #e5e7eb !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -35,7 +55,7 @@ html, body, [class*="css"] {
 DATA_DIR = Path("data")
 
 # ===============================
-# CSV 로더 (NFC/NFD)
+# CSV 로더 (한글 안전)
 # ===============================
 def load_csv(target):
     t_nfc = unicodedata.normalize("NFC", target)
@@ -64,7 +84,7 @@ def match(): return load_csv("별빛카페_내전.csv")
 # 타이틀
 # ===============================
 st.title("🌌 2025 별빛카페 연말정산")
-st.caption("한 해 동안의 성장, 활동, 그리고 승부의 기록")
+st.caption("어둠 속에서 더 선명해진 기록들")
 
 menu = st.sidebar.radio(
     "메뉴",
@@ -72,7 +92,7 @@ menu = st.sidebar.radio(
 )
 
 # ===============================
-# 1️⃣ 인원수 변화
+# 1️⃣ 인원수 변화 (완만한 보간!)
 # ===============================
 if menu == "인원수 변화":
     df = member()
@@ -80,39 +100,43 @@ if menu == "인원수 변화":
         df["날짜"] = pd.to_datetime(df["날짜"])
         df = df.sort_values("날짜")
 
-        start, end = pd.to_datetime("2025-08-27"), pd.to_datetime("2025-12-24")
-        daily = 6.51
+        # 전체 날짜 생성
+        full = pd.DataFrame({
+            "날짜": pd.date_range(df["날짜"].min(), df["날짜"].max(), freq="D")
+        })
 
-        dates = pd.date_range(start, end, freq="D")
-        full = pd.DataFrame({"날짜": dates}).merge(df, on="날짜", how="left")
+        full = full.merge(df, on="날짜", how="left")
 
-        base_d, base_v = df.iloc[0]["날짜"], df.iloc[0]["인원수(명)"]
-
-        full["인원수(명)"] = full.apply(
-            lambda r: r["인원수(명)"] if pd.notna(r["인원수(명)"])
-            else round(base_v + (r["날짜"] - base_d).days * daily, 1),
-            axis=1
-        )
+        # ❗ 핵심: 선형 보간으로 자연스럽게
+        full["인원수(명)"] = full["인원수(명)"].interpolate(method="linear")
 
         fig = px.line(
             full,
             x="날짜",
             y="인원수(명)",
             markers=True,
-            title="📈 서버 인원수 변화 (일 평균 +6.51명 반영)"
+            title="📈 서버 인원수 변화 (자연스러운 추세)"
         )
-        fig.update_layout(font=dict(family="Malgun Gothic"))
+
+        fig.update_layout(
+            font=dict(family="Malgun Gothic", color="white"),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(gridcolor="rgba(255,255,255,0.15)"),
+            yaxis=dict(gridcolor="rgba(255,255,255,0.15)")
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
 # ===============================
-# 2️⃣ 활동 내역 (그래프 복구!)
+# 2️⃣ 활동 내역 (막대 그래프)
 # ===============================
 elif menu == "활동 내역":
     df = activity()
     if df is not None:
         summary = df.groupby(["이름", "종류"])["경험치"].sum().reset_index()
 
-        st.subheader("📊 채팅 · 음성 경험치 총합")
+        st.subheader("📊 채팅 · 음성 활동량")
 
         fig = px.bar(
             summary,
@@ -122,23 +146,19 @@ elif menu == "활동 내역":
             barmode="group"
         )
         fig.update_layout(
-            font=dict(family="Malgun Gothic"),
-            xaxis_title="유저",
-            yaxis_title="경험치"
+            font=dict(color="white"),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)"
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("🏆 종류별 1위")
-        top = summary.sort_values("경험치", ascending=False).groupby("종류").head(1)
-        st.dataframe(top, use_container_width=True)
-
 # ===============================
-# 3️⃣ 관리진 목록 (심플 카드)
+# 3️⃣ 관리진 목록
 # ===============================
 elif menu == "관리진 목록":
     df = admin()
     if df is not None:
-        st.subheader("🛡️ 현재 관리진")
+        st.subheader("🛡️ 서버 관리진")
         cols = st.columns(3)
         for i, r in df.iterrows():
             with cols[i % 3]:
@@ -156,39 +176,40 @@ elif menu == "관리진 목록":
 elif menu == "이벤트 내역":
     df = event()
     if df is not None:
-        st.subheader("🎉 진행 이벤트")
+        st.subheader("🎉 연간 이벤트")
         for _, r in df.iterrows():
             st.markdown(f"""
             <div class="soft-card">
                 <b>{r['이벤트 이름']}</b><br>
-                운영 기간: {r['운영기간']}
+                기간: {r['운영기간']}
             </div>
             """, unsafe_allow_html=True)
 
 # ===============================
-# 5️⃣ 내전 로그 (유지 + 승률 추가)
+# 5️⃣ 내전 로그 + 승률
 # ===============================
 elif menu == "내전 로그":
     df = match()
     if df is not None:
         df["날짜"] = pd.to_datetime(df["날짜"])
+
         st.subheader("⚔️ 내전 기록")
 
         for _, r in df.iterrows():
-            color = "#ef4444" if r["승리팀"] == "레드" else "#3b82f6"
+            color = "#ef4444" if r["승리팀"] == "레드" else "#60a5fa"
             st.markdown(f"""
             <div class="soft-card" style="border-left:5px solid {color}">
                 <b>{r['날짜'].strftime('%Y.%m.%d')} · {r['게임']}</b><br>
                 참여 인원: {r['참여인원']}명<br>
-                승리 팀: <b style="color:{color}">{r['승리팀']}</b>
+                승리 팀: <span style="color:{color}">{r['승리팀']}</span>
             </div>
             """, unsafe_allow_html=True)
 
         st.subheader("📊 팀별 승률")
-        win_rate = df["승리팀"].value_counts(normalize=True) * 100
-        fig = px.pie(
-            values=win_rate.values,
-            names=win_rate.index
+        rate = df["승리팀"].value_counts(normalize=True) * 100
+        fig = px.pie(values=rate.values, names=rate.index)
+        fig.update_layout(
+            font=dict(color="white"),
+            paper_bgcolor="rgba(0,0,0,0)"
         )
-        fig.update_layout(font=dict(family="Malgun Gothic"))
         st.plotly_chart(fig, use_container_width=True)
