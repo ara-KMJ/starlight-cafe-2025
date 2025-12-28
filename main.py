@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # ===============================
-# 글로벌 스타일 (그라데이션)
+# 스타일
 # ===============================
 st.markdown("""
 <style>
@@ -25,29 +25,34 @@ html, body, [data-testid="stAppViewContainer"] {
     color: #f9fafb;
 }
 
-[data-testid="stHeader"] {
-    background: transparent;
+.rank-box {
+    background: rgba(15, 23, 42, 0.9);
+    border: 2px solid rgba(148, 163, 184, 0.4);
+    border-radius: 12px;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-weight: 700;
+    color: white;
+}
+
+.rank-title {
+    font-size: 1.1rem;
+    color: #93c5fd;
+}
+
+.rank-name {
+    font-size: 2rem;
+    margin-top: 0.5em;
 }
 
 .soft-card {
     background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(148, 163, 184, 0.25);
     border-radius: 16px;
     padding: 1.2em;
     margin-bottom: 1em;
-    color: #f1f5f9;
-}
-
-h1, h2, h3, h4 {
-    color: #ffffff;
-}
-
-.stDataFrame {
-    background-color: rgba(15, 23, 42, 0.85);
-}
-
-label, p, span {
-    color: #e5e7eb !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -55,18 +60,18 @@ label, p, span {
 DATA_DIR = Path("data")
 
 # ===============================
-# CSV 로더 (한글 안전)
+# CSV 로더
 # ===============================
-def load_csv(target):
-    t_nfc = unicodedata.normalize("NFC", target)
-    t_nfd = unicodedata.normalize("NFD", target)
+def load_csv(name):
+    t1 = unicodedata.normalize("NFC", name)
+    t2 = unicodedata.normalize("NFD", name)
     for f in DATA_DIR.iterdir():
         if f.is_file():
-            n_nfc = unicodedata.normalize("NFC", f.name)
-            n_nfd = unicodedata.normalize("NFD", f.name)
-            if n_nfc == t_nfc or n_nfd == t_nfd:
+            n1 = unicodedata.normalize("NFC", f.name)
+            n2 = unicodedata.normalize("NFD", f.name)
+            if n1 == t1 or n2 == t2:
                 return pd.read_csv(f)
-    st.error(f"❌ 파일을 찾을 수 없습니다: {target}")
+    st.error(f"❌ 파일 없음: {name}")
     return None
 
 @st.cache_data
@@ -81,18 +86,16 @@ def event(): return load_csv("별빛카페_이벤트.csv")
 def match(): return load_csv("별빛카페_내전.csv")
 
 # ===============================
-# 타이틀
+# 제목
 # ===============================
 st.title("🌌 2025 별빛카페 연말정산")
-st.caption("어둠 속에서 더 선명해진 기록들")
-
 menu = st.sidebar.radio(
     "메뉴",
     ["인원수 변화", "활동 내역", "관리진 목록", "이벤트 내역", "내전 로그"]
 )
 
 # ===============================
-# 1️⃣ 인원수 변화 (완만한 보간!)
+# 1️⃣ 인원수 변화
 # ===============================
 if menu == "인원수 변화":
     df = member()
@@ -100,116 +103,137 @@ if menu == "인원수 변화":
         df["날짜"] = pd.to_datetime(df["날짜"])
         df = df.sort_values("날짜")
 
-        # 전체 날짜 생성
         full = pd.DataFrame({
             "날짜": pd.date_range(df["날짜"].min(), df["날짜"].max(), freq="D")
         })
-
         full = full.merge(df, on="날짜", how="left")
 
-        # ❗ 핵심: 선형 보간으로 자연스럽게
-        full["인원수(명)"] = full["인원수(명)"].interpolate(method="linear")
+        # 선형 보간 + 자연수 처리
+        full["인원수(명)"] = (
+            full["인원수(명)"]
+            .interpolate(method="linear")
+            .astype(int)
+        )
 
         fig = px.line(
             full,
             x="날짜",
             y="인원수(명)",
             markers=True,
-            title="📈 서버 인원수 변화 (자연스러운 추세)"
+            title="📈 서버 인원수 변화"
         )
 
         fig.update_layout(
-            font=dict(family="Malgun Gothic", color="white"),
+            font=dict(color="white"),
             plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(gridcolor="rgba(255,255,255,0.15)"),
-            yaxis=dict(gridcolor="rgba(255,255,255,0.15)")
+            paper_bgcolor="rgba(0,0,0,0)"
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
 # ===============================
-# 2️⃣ 활동 내역 (막대 그래프)
+# 2️⃣ 활동 내역
 # ===============================
 elif menu == "활동 내역":
     df = activity()
     if df is not None:
-        summary = df.groupby(["이름", "종류"])["경험치"].sum().reset_index()
+        total = (
+            df.groupby(["이름", "종류"])["경험치"]
+            .sum()
+            .reset_index()
+        )
 
-        st.subheader("📊 채팅 · 음성 활동량")
+        # 1위 계산
+        chat_top = (
+            total[total["종류"] == "채팅"]
+            .sort_values("경험치", ascending=False)
+            .iloc[0]["이름"]
+        )
+        voice_top = (
+            total[total["종류"] == "음성"]
+            .sort_values("경험치", ascending=False)
+            .iloc[0]["이름"]
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"""
+            <div class="rank-box">
+                <div class="rank-title">채팅 1위</div>
+                <div class="rank-name">{chat_top}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="rank-box">
+                <div class="rank-title">음성 1위</div>
+                <div class="rank-name">{voice_top}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("### 📊 활동 경험치 분포")
 
         fig = px.bar(
-            summary,
+            total,
             x="이름",
             y="경험치",
             color="종류",
             barmode="group"
         )
+
         fig.update_layout(
             font=dict(color="white"),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)"
         )
+
         st.plotly_chart(fig, use_container_width=True)
 
 # ===============================
-# 3️⃣ 관리진 목록
+# 3️⃣ 관리진
 # ===============================
 elif menu == "관리진 목록":
     df = admin()
     if df is not None:
-        st.subheader("🛡️ 서버 관리진")
-        cols = st.columns(3)
-        for i, r in df.iterrows():
-            with cols[i % 3]:
-                st.markdown(f"""
-                <div class="soft-card">
-                    <b>{r['이름']}</b><br>
-                    부서: {r['부서']}<br>
-                    직급: {r['직급']}
-                </div>
-                """, unsafe_allow_html=True)
-
-# ===============================
-# 4️⃣ 이벤트 내역
-# ===============================
-elif menu == "이벤트 내역":
-    df = event()
-    if df is not None:
-        st.subheader("🎉 연간 이벤트")
         for _, r in df.iterrows():
             st.markdown(f"""
             <div class="soft-card">
-                <b>{r['이벤트 이름']}</b><br>
-                기간: {r['운영기간']}
+                <b>{r['이름']}</b><br>
+                {r['부서']} · {r['직급']}
             </div>
             """, unsafe_allow_html=True)
 
 # ===============================
-# 5️⃣ 내전 로그 + 승률
+# 4️⃣ 이벤트
+# ===============================
+elif menu == "이벤트 내역":
+    df = event()
+    if df is not None:
+        for _, r in df.iterrows():
+            st.markdown(f"""
+            <div class="soft-card">
+                <b>{r['이벤트 이름']}</b><br>
+                {r['운영기간']}
+            </div>
+            """, unsafe_allow_html=True)
+
+# ===============================
+# 5️⃣ 내전
 # ===============================
 elif menu == "내전 로그":
     df = match()
     if df is not None:
         df["날짜"] = pd.to_datetime(df["날짜"])
-
-        st.subheader("⚔️ 내전 기록")
-
         for _, r in df.iterrows():
-            color = "#ef4444" if r["승리팀"] == "레드" else "#60a5fa"
             st.markdown(f"""
-            <div class="soft-card" style="border-left:5px solid {color}">
+            <div class="soft-card">
                 <b>{r['날짜'].strftime('%Y.%m.%d')} · {r['게임']}</b><br>
-                참여 인원: {r['참여인원']}명<br>
-                승리 팀: <span style="color:{color}">{r['승리팀']}</span>
+                참여: {r['참여인원']}명<br>
+                승리팀: {r['승리팀']}
             </div>
             """, unsafe_allow_html=True)
 
-        st.subheader("📊 팀별 승률")
         rate = df["승리팀"].value_counts(normalize=True) * 100
         fig = px.pie(values=rate.values, names=rate.index)
-        fig.update_layout(
-            font=dict(color="white"),
-            paper_bgcolor="rgba(0,0,0,0)"
-        )
+        fig.update_layout(font=dict(color="white"))
         st.plotly_chart(fig, use_container_width=True)
