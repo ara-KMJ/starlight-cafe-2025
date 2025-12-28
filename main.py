@@ -1,284 +1,180 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+from pathlib import Path
+import unicodedata
+import io
 
+# ===============================
+# 페이지 설정
+# ===============================
 st.set_page_config(
     page_title="2025 별빛카페 연말정산",
     layout="wide"
 )
 
 # ===============================
-# TITLE
-# ===============================
-st.markdown("""
-<h1 style="
-    text-align:center;
-    font-size:48px;
-    font-weight:900;
-    margin-top:10px;
-    margin-bottom:40px;
-    color:#bae6fd;
-">
-✨ 2025 별빛카페 연말정산 ✨
-</h1>
-""", unsafe_allow_html=True)
-
-# ===============================
-# STYLE
+# 전체 스타일 (배경 / 글씨)
 # ===============================
 st.markdown("""
 <style>
-.stApp {
+body {
     background: linear-gradient(135deg, #000000, #27377c);
 }
-* {
-    color: #e0f2fe !important;
-    font-family: 'Noto Sans KR','Malgun Gothic',sans-serif;
+html, body, [class*="css"] {
+    color: #bae6fd;
+    font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
-.section-title {
-    font-size: 30px;
-    font-weight: 800;
-    margin-bottom: 20px;
-}
-.square {
-    background:#020617;
-    border-radius:18px;
-    padding:24px;
-    text-align:center;
-    box-shadow:0 0 20px rgba(125,211,252,0.5);
-}
-.card {
-    background:#020617;
-    border-radius:16px;
-    padding:18px;
-    margin-bottom:14px;
-}
-div[data-baseweb="tab-list"] {
-    background:#000000;
-}
-button[data-baseweb="tab"] {
-    color:#7dd3fc !important;
-    font-weight:700;
-}
-button[aria-selected="true"] {
-    background:rgba(125,211,252,0.25) !important;
+h1, h2, h3 {
+    color: #e0f2fe;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ===============================
-# LOAD DATA
+# 타이틀
 # ===============================
+st.markdown("""
+<h1 style="text-align:center; font-size:48px; font-weight:900; margin-bottom:40px;">
+✨ 2025 별빛카페 연말정산 ✨
+</h1>
+""", unsafe_allow_html=True)
+
+# ===============================
+# 파일 로딩 (한글 안전)
+# ===============================
+DATA_DIR = Path("data")
+
+def load_csv(filename):
+    for p in DATA_DIR.iterdir():
+        if unicodedata.normalize("NFC", p.name) == unicodedata.normalize("NFC", filename):
+            return pd.read_csv(p)
+    st.error(f"{filename} 파일을 찾을 수 없습니다.")
+    return pd.DataFrame()
+
 @st.cache_data
-def load_data():
-    members = pd.read_csv("data/별빛카페_인원수_변화.csv")
-    activity = pd.read_csv("data/별빛카페_채팅음성.csv")
-    events = pd.read_csv("data/별빛카페_이벤트.csv")
-    staff = pd.read_csv("data/현재_관리자.csv")
-    scrim = pd.read_csv("data/별빛카페_내전.csv")
-    return members, activity, events, staff, scrim
+def load_all():
+    return {
+        "members": load_csv("별빛카페_인원수_변화.csv"),
+        "activity": load_csv("별빛카페_채팅음성.csv"),
+        "admins": load_csv("현재_관리자.csv"),
+        "events": load_csv("별빛카페_이벤트.csv"),
+        "wars": load_csv("별빛카페_내전.csv"),
+    }
 
 with st.spinner("데이터 불러오는 중..."):
-    members, activity, events, staff, scrim = load_data()
+    data = load_all()
 
 # ===============================
-# 인원수 보정 (완만 + 자연수)
-# ===============================
-members["날짜"] = pd.to_datetime(members["날짜"])
-full_dates = pd.date_range(
-    members["날짜"].min(),
-    members["날짜"].max(),
-    freq="D"
-)
-
-members_full = (
-    members.set_index("날짜")
-    .reindex(full_dates)
-    .interpolate()
-    .rolling(7, min_periods=1)
-    .mean()
-    .round()
-    .astype(int)
-    .reset_index()
-)
-
-members_full.columns = ["날짜", "인원수"]
-
-# ===============================
-# 활동 TOP
-# ===============================
-chat_top = (
-    activity[activity["종류"] == "채팅"]
-    .groupby("이름")["경험치"]
-    .sum()
-    .idxmax()
-)
-
-voice_top = (
-    activity[activity["종류"] == "음성"]
-    .groupby("이름")["경험치"]
-    .sum()
-    .idxmax()
-)
-
-# ===============================
-# 내전 승률
-# ===============================
-win_rate = (
-    scrim["승리팀"]
-    .value_counts(normalize=True)
-    .mul(100)
-    .round(1)
-)
-
-# ===============================
-# TABS
+# 탭 구성
 # ===============================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 활동 내역",
+    "📈 인원수 변화",
+    "🔥 활동 내역",
+    "🛡️ 관리진",
     "🎉 이벤트",
-    "👑 관리진",
-    "👥 인원수 변화",
-    "⚔️ 내전 로그"
+    "🎮 내전 로그"
 ])
 
 # ===============================
-# TAB 1 활동 내역
+# 1️⃣ 인원수 변화
 # ===============================
 with tab1:
-    st.markdown('<div class="section-title">활동 내역</div>', unsafe_allow_html=True)
+    df = data["members"].copy()
+    df["날짜"] = pd.to_datetime(df["날짜"])
+    df = df.sort_values("날짜")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(
-            f"<div class='square'><h3>채팅 1위</h3><h1>{chat_top}</h1></div>",
-            unsafe_allow_html=True
-        )
-    with c2:
-        st.markdown(
-            f"<div class='square'><h3>음성 1위</h3><h1>{voice_top}</h1></div>",
-            unsafe_allow_html=True
-        )
+    # 날짜 채우기 (완만 보간)
+    full_dates = pd.date_range("2025-08-27", "2025-12-24")
+    df = df.set_index("날짜").reindex(full_dates)
+    df["인원수(명)"] = df["인원수(명)"].interpolate().round().astype(int)
+    df = df.reset_index().rename(columns={"index": "날짜"})
 
-    summary = activity.groupby(["이름", "종류"])["경험치"].sum().unstack(fill_value=0)
-
-    fig = go.Figure()
-    for col in summary.columns:
-        fig.add_bar(
-            x=summary.index,
-            y=summary[col],
-            name=col
-        )
-
-    fig.update_layout(
-        barmode="group",
-        paper_bgcolor="#020617",
-        plot_bgcolor="#020617",
-        height=500
+    fig = px.line(
+        df,
+        x="날짜",
+        y="인원수(명)",
+        markers=True,
+        title="서버 인원수 변화"
     )
-
+    fig.update_layout(
+        font=dict(family="Malgun Gothic"),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # ===============================
-# TAB 2 이벤트
+# 2️⃣ 활동 내역
 # ===============================
 with tab2:
-    st.markdown('<div class="section-title">이벤트 내역</div>', unsafe_allow_html=True)
-    for _, r in events.iterrows():
-        st.markdown(
-            f"<div class='card'><h3>{r['이벤트 이름']}</h3><p>{r['운영기간']}</p></div>",
-            unsafe_allow_html=True
-        )
+    act = data["activity"]
 
-# ===============================
-# TAB 3 관리진
-# ===============================
-with tab3:
-    st.markdown('<div class="section-title">관리진 목록</div>', unsafe_allow_html=True)
-    for _, r in staff.iterrows():
-        st.markdown(
-            f"<div class='card'><h3>{r['이름']}</h3><p>{r['부서']} | {r['직급']}</p></div>",
-            unsafe_allow_html=True
-        )
+    chat = act[act["종류"] == "채팅"].groupby("이름")["경험치"].sum()
+    voice = act[act["종류"] == "음성"].groupby("이름")["경험치"].sum()
 
-# ===============================
-# TAB 4 인원수 변화
-# ===============================
-with tab4:
-    st.markdown('<div class="section-title">인원수 변화</div>', unsafe_allow_html=True)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=members_full["날짜"],
-        y=members_full["인원수"],
-        mode="lines",
-        line=dict(width=4, color="#7dd3fc"),
-        fill="tozeroy"
-    ))
-
-    fig.update_layout(
-        paper_bgcolor="#020617",
-        plot_bgcolor="#020617",
-        yaxis=dict(tickformat=",d"),
-        height=500
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# ===============================
-# TAB 5 내전 로그
-# ===============================
-with tab5:
-    st.markdown('<div class="section-title">내전 로그</div>', unsafe_allow_html=True)
-
-    # 승률 카드
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(
-            f"<div class='square'><h3>레드팀 승률</h3><h1>{win_rate.get('레드', 0)}%</h1></div>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"""
+        <div style="border:2px solid #38bdf8; padding:30px; text-align:center;">
+        <h3>채팅 1위</h3>
+        <h2>{chat.idxmax()}</h2>
+        </div>
+        """, unsafe_allow_html=True)
     with c2:
-        st.markdown(
-            f"<div class='square'><h3>블루팀 승률</h3><h1>{win_rate.get('블루', 0)}%</h1></div>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"""
+        <div style="border:2px solid #38bdf8; padding:30px; text-align:center;">
+        <h3>음성 1위</h3>
+        <h2>{voice.idxmax()}</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # 승률 그래프 (색 지정)
-    fig = go.Figure()
-    fig.add_bar(
-        x=["레드팀"],
-        y=[win_rate.get("레드", 0)],
-        marker_color="#ef4444",
-        name="레드팀"
-    )
-    fig.add_bar(
-        x=["블루팀"],
-        y=[win_rate.get("블루", 0)],
-        marker_color="#3b82f6",
-        name="블루팀"
-    )
-
-    fig.update_layout(
-        barmode="group",
-        paper_bgcolor="#020617",
-        plot_bgcolor="#020617",
-        yaxis=dict(title="승률 (%)", range=[0, 100]),
-        height=400
-    )
-
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["채팅 경험치", "음성 경험치"])
+    fig.add_bar(x=chat.index, y=chat.values, row=1, col=1)
+    fig.add_bar(x=voice.index, y=voice.values, row=1, col=2)
+    fig.update_layout(font=dict(family="Malgun Gothic"))
     st.plotly_chart(fig, use_container_width=True)
 
-    # 내전 로그 카드
-    for _, r in scrim.iterrows():
-        st.markdown(
-            f"""
-            <div class="card">
-                <h3>{r['게임']}</h3>
-                <p>📅 날짜: {r['날짜']}</p>
-                <p>👥 참여 인원: {r['참여인원']}명</p>
-                <p>🏆 승리팀: <b>{r['승리팀']}</b></p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+# ===============================
+# 3️⃣ 관리진
+# ===============================
+with tab3:
+    st.dataframe(data["admins"], use_container_width=True)
+
+# ===============================
+# 4️⃣ 이벤트
+# ===============================
+with tab4:
+    st.dataframe(data["events"], use_container_width=True)
+
+# ===============================
+# 5️⃣ 내전 로그 + 승률
+# ===============================
+with tab5:
+    war = data["wars"]
+
+    st.subheader("🎮 내전 로그")
+    st.dataframe(war, use_container_width=True)
+
+    win_rate = war["승리팀"].value_counts(normalize=True) * 100
+    win_df = win_rate.reset_index()
+    win_df.columns = ["팀", "승률"]
+
+    fig = px.bar(
+        win_df,
+        x="팀",
+        y="승률",
+        color="팀",
+        color_discrete_map={
+            "레드": "red",
+            "블루": "blue"
+        },
+        title="내전 승률 (%)"
+    )
+    fig.update_layout(
+        font=dict(family="Malgun Gothic"),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
+    st.plotly_chart(fig, use_container_width=True)
