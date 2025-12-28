@@ -90,6 +90,7 @@ with tab1:
     df["날짜"] = pd.to_datetime(df["날짜"])
     df = df.sort_values("날짜")
 
+    # 날짜 채우기 + 완만 보간
     full_dates = pd.date_range("2025-08-27", "2025-12-24")
     df = df.set_index("날짜").reindex(full_dates)
     df["인원수(명)"] = df["인원수(명)"].interpolate().round().astype(int)
@@ -102,11 +103,45 @@ with tab1:
         markers=True,
         title="서버 인원수 변화"
     )
+
+    # 🎉 인원수 달성 이벤트
+    milestones = {
+        "2025-08-27": "서버 오픈 🎉",
+        "2025-08-28": "100명 달성!",
+        "2025-09-02": "200명 달성!",
+        "2025-09-16": "300명 달성!",
+        "2025-10-05": "400명 달성!",
+        "2025-11-02": "500명 달성!",
+        "2025-11-22": "600명 달성!",
+        "2025-12-04": "700명 달성!",
+    }
+
+    for date_str, label in milestones.items():
+        date = pd.to_datetime(date_str)
+
+        fig.add_vline(
+            x=date,
+            line_width=1.5,
+            line_dash="dot",
+            line_color="#38bdf8"
+        )
+
+        fig.add_annotation(
+            x=date,
+            y=df["인원수(명)"].max(),
+            text=label,
+            showarrow=False,
+            yshift=15,
+            font=dict(color="#bae6fd", size=12),
+            align="center"
+        )
+
     fig.update_layout(
         font=dict(family="Malgun Gothic"),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)"
     )
+
     st.plotly_chart(fig, use_container_width=True)
 
 # ===============================
