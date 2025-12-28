@@ -7,6 +7,11 @@ import unicodedata
 import io
 
 # ===============================
+# 캐시 강제 초기화 (Cloud 반영 문제 방지)
+# ===============================
+st.cache_data.clear()
+
+# ===============================
 # 페이지 설정
 # ===============================
 st.set_page_config(
@@ -23,11 +28,11 @@ body {
     background: linear-gradient(135deg, #000000, #27377c);
 }
 html, body, [class*="css"] {
-    color: #bae6fd;
+    color: #e0f2fe;
     font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
 h1, h2, h3 {
-    color: #e0f2fe;
+    color: #bae6fd;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -42,7 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ===============================
-# 파일 로딩 (한글 안전)
+# 데이터 로딩 (한글 파일명 안전)
 # ===============================
 DATA_DIR = Path("data")
 
@@ -50,7 +55,7 @@ def load_csv(filename):
     for p in DATA_DIR.iterdir():
         if unicodedata.normalize("NFC", p.name) == unicodedata.normalize("NFC", filename):
             return pd.read_csv(p)
-    st.error(f"{filename} 파일을 찾을 수 없습니다.")
+    st.error(f"❌ {filename} 파일을 찾을 수 없습니다.")
     return pd.DataFrame()
 
 @st.cache_data
@@ -85,7 +90,6 @@ with tab1:
     df["날짜"] = pd.to_datetime(df["날짜"])
     df = df.sort_values("날짜")
 
-    # 날짜 채우기 (완만 보간)
     full_dates = pd.date_range("2025-08-27", "2025-12-24")
     df = df.set_index("날짜").reindex(full_dates)
     df["인원수(명)"] = df["인원수(명)"].interpolate().round().astype(int)
@@ -118,34 +122,75 @@ with tab2:
     with c1:
         st.markdown(f"""
         <div style="border:2px solid #38bdf8; padding:30px; text-align:center;">
-        <h3>채팅 1위</h3>
-        <h2>{chat.idxmax()}</h2>
+            <h3>채팅 1위</h3>
+            <h2>{chat.idxmax()}</h2>
         </div>
         """, unsafe_allow_html=True)
+
     with c2:
         st.markdown(f"""
         <div style="border:2px solid #38bdf8; padding:30px; text-align:center;">
-        <h3>음성 1위</h3>
-        <h2>{voice.idxmax()}</h2>
+            <h3>음성 1위</h3>
+            <h2>{voice.idxmax()}</h2>
         </div>
         """, unsafe_allow_html=True)
 
-    fig = make_subplots(rows=1, cols=2, subplot_titles=["채팅 경험치", "음성 경험치"])
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["채팅 경험치", "음성 경험치"]
+    )
     fig.add_bar(x=chat.index, y=chat.values, row=1, col=1)
     fig.add_bar(x=voice.index, y=voice.values, row=1, col=2)
-    fig.update_layout(font=dict(family="Malgun Gothic"))
+    fig.update_layout(
+        font=dict(family="Malgun Gothic"),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # ===============================
-# 3️⃣ 관리진
+# 3️⃣ 관리진 (부서별 정리)
 # ===============================
 with tab3:
-    st.dataframe(data["admins"], use_container_width=True)
+    st.subheader("🛡️ 관리진 목록 (부서별)")
+
+    admins = data["admins"]
+
+    if admins.empty:
+        st.error("관리진 데이터가 없습니다.")
+    else:
+        for dept, group in admins.groupby("부서"):
+            st.markdown(f"""
+            <div style="
+                border-left:6px solid #38bdf8;
+                padding:12px 16px;
+                margin:20px 0;
+                background-color:rgba(255,255,255,0.03);
+            ">
+                <h3>📌 {dept}</h3>
+            </div>
+            """, unsafe_allow_html=True)
+
+            cols = st.columns(min(4, len(group)))
+            for col, (_, row) in zip(cols, group.iterrows()):
+                col.markdown(f"""
+                <div style="
+                    border:1px solid #38bdf8;
+                    padding:16px;
+                    text-align:center;
+                    border-radius:8px;
+                    background-color:rgba(0,0,0,0.4);
+                ">
+                    <h4>{row['이름']}</h4>
+                    <p style="color:#7dd3fc;">{row['직급']}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ===============================
 # 4️⃣ 이벤트
 # ===============================
 with tab4:
+    st.subheader("🎉 이벤트 내역")
     st.dataframe(data["events"], use_container_width=True)
 
 # ===============================
