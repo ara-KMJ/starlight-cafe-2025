@@ -231,12 +231,41 @@ with tab2:
 with tab3:
     st.subheader("🛡️ 관리진 목록 (부서별)")
 
-    admins = data["admins"]
+    admins = data["admins"].copy()
 
     if admins.empty:
         st.error("관리진 데이터가 없습니다.")
     else:
-        for dept, group in admins.groupby("부서"):
+        # ✅ 원하는 부서 순서
+        dept_order = [
+            "대표",
+            "고위직",
+            "보안",
+            "안내",
+            "뉴관",
+            "기획",
+            "홍보",
+            "내전",
+            "인사"
+        ]
+
+        # CSV에 있는 실제 부서 목록
+        existing_depts = admins["부서"].unique().tolist()
+
+        # 순서 적용 (없는 부서는 제외)
+        ordered_depts = [d for d in dept_order if d in existing_depts]
+
+        # 나머지 부서는 기타로
+        others = [d for d in existing_depts if d not in dept_order]
+
+        for dept in ordered_depts + (["기타"] if others else []):
+            if dept == "기타":
+                group = admins[admins["부서"].isin(others)]
+                display_name = "기타"
+            else:
+                group = admins[admins["부서"] == dept]
+                display_name = dept
+
             st.markdown(f"""
             <div style="
                 border-left:6px solid #38bdf8;
@@ -244,7 +273,7 @@ with tab3:
                 margin:20px 0;
                 background-color:rgba(255,255,255,0.03);
             ">
-                <h3>📌 {dept}</h3>
+                <h3>📌 {display_name}</h3>
             </div>
             """, unsafe_allow_html=True)
 
