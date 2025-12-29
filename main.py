@@ -144,6 +144,48 @@ with tab1:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("## 🗓️ 서버 성장 히스토리")
+
+    history = pd.DataFrame({
+        "날짜": [
+            "2025-08-27",
+            "2025-08-28",
+            "2025-09-02",
+            "2025-09-16",
+            "2025-10-05",
+            "2025-11-02",
+            "2025-11-22",
+            "2025-12-04",
+        ],
+        "이벤트": [
+            "서버 오픈 🎉",
+            "100명 달성",
+            "200명 달성",
+            "300명 달성",
+            "400명 달성",
+            "500명 달성",
+            "600명 달성",
+            "700명 달성",
+        ]
+    })
+
+    # 카드형 레이아웃
+    for _, row in history.iterrows():
+        st.markdown(f"""
+        <div style="
+            border-left:6px solid #38bdf8;
+            padding:12px 18px;
+            margin-bottom:12px;
+            background-color:rgba(0,0,0,0.45);
+            border-radius:6px;
+        ">
+            <strong style="color:#7dd3fc;">{row['날짜']}</strong>
+            <span style="margin-left:12px; font-size:18px;">
+                {row['이벤트']}
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
 # ===============================
 # 2️⃣ 활동 내역
 # ===============================
